@@ -1,35 +1,19 @@
 #!/usr/bin/env bash
-# ---------------------------------------------------------------------------
-# Deploys one environment stage (qua | prd) to a SINGLE SAP Cloud Integration
-# tenant, using per-environment packages and artifact suffixes.
-#
-#   usage: scripts/deploy.sh qua
-#
-# Required env vars (GitHub Actions secrets):
-#   CPI_TOKEN_URL  CPI_CLIENT_ID  CPI_CLIENT_SECRET  CPI_API_URL
-# ---------------------------------------------------------------------------
 set -euo pipefail
 
-#   usage: scripts/deploy.sh qua [Test_iFlow_DEV]
-# Second argument (or the IFLOW_DIR env var) picks ONE artifact folder to
-# deploy. Without it, SOURCE_DIR from config/base.env is used.
 ENV_NAME="${1:?usage: deploy.sh <qua|prd> [artifact-folder]}"
 IFLOW_DIR="${2:-${IFLOW_DIR:-}}"
 : "${CPI_TOKEN_URL:?missing}" "${CPI_CLIENT_ID:?missing}" "${CPI_CLIENT_SECRET:?missing}" "${CPI_API_URL:?missing}"
 
-# --- config ----------------------------------------------------------------
 for f in "config/base.env" "config/${ENV_NAME}.env"; do
   [[ -f "$f" ]] || { echo "::error::Missing config file $f"; exit 1; }
-  # shellcheck disable=SC1090
   source "$f"
 done
-# Which artifact folder are we promoting? Explicit argument wins.
+
 [[ -n "$IFLOW_DIR" ]] && SOURCE_DIR="$IFLOW_DIR"
 : "${SOURCE_DIR:?no artifact folder given (arg 2) and SOURCE_DIR not set in base.env}"
 SOURCE_DIR="${SOURCE_DIR%/}"
 
-# Base ID = folder name without the _DEV suffix, unless base.env overrides it
-# for the single-artifact case.
 if [[ -n "$IFLOW_DIR" || -z "${BASE_ID:-}" ]]; then
   BASE_ID="${SOURCE_DIR%_DEV}"
 fi
@@ -41,13 +25,11 @@ ARTIFACT_ID="${BASE_ID}${IFLOW_SUFFIX}"
 ARTIFACT_NAME="${BASE_ID}${IFLOW_SUFFIX}"
 API="${CPI_API_URL%/}"
 
-# Per-artifact params file if present, otherwise the shared one.
 PARAMS_FILE="config/${BASE_ID}.${ENV_NAME}.params"
 [[ -f "$PARAMS_FILE" ]] || PARAMS_FILE="config/${ENV_NAME}.params"
 
-# --- helper: call the API, keep body + status, show body on error -----------
 RESP_BODY=""
-req() {  # req METHOD URL [json-file] -> echoes http status
+req() {
   local method="$1" url="$2" data="${3:-}" out code
   out="$(mktemp)"
   if [[ -n "$data" ]]; then
@@ -62,7 +44,6 @@ req() {  # req METHOD URL [json-file] -> echoes http status
 }
 fail() { echo "::error::$1"; [[ -n "$RESP_BODY" ]] && echo "    tenant said: $RESP_BODY"; exit 1; }
 
-# --- 1. package the exploded project ---------------------------------------
 [[ -d "$SOURCE_DIR" ]] || { echo "::error::Source folder '$SOURCE_DIR' not found"; exit 1; }
 [[ -f "$SOURCE_DIR/META-INF/MANIFEST.MF" ]] \
   || { echo "::error::'$SOURCE_DIR' has no META-INF/MANIFEST.MF"; exit 1; }
@@ -70,8 +51,6 @@ fail() { echo "::error::$1"; [[ -n "$RESP_BODY" ]] && echo "    tenant said: $RE
 WORK="$(mktemp -d)"
 cp -r "$SOURCE_DIR/." "$WORK/"
 
-# The bundle metadata still carries the DEV artifact's identity. CPI rejects an
-# upload whose manifest identity contradicts the requested Id, so rewrite it.
 MF="$WORK/META-INF/MANIFEST.MF"
 sed -i -E "s/^(Bundle-SymbolicName: *)[^;[:space:]]+/\1${ARTIFACT_ID}/" "$MF"
 sed -i -E "s/^(Bundle-Name: *).*/\1${ARTIFACT_NAME}/" "$MF"
@@ -83,7 +62,6 @@ FILE="$WORK.zip"
 echo "==> Packaged $SOURCE_DIR ($(du -h "$FILE" | cut -f1))"
 echo "==> [$ENV_NAME] Target: $ARTIFACT_ID in package $TARGET_PACKAGE"
 
-# --- 2. OAuth token ---------------------------------------------------------
 TOKEN_URL="$CPI_TOKEN_URL"
 [[ "$TOKEN_URL" == *"/oauth/token"* ]] || TOKEN_URL="${TOKEN_URL%/}/oauth/token"
 TOKEN=$(curl -sS -f -X POST "$TOKEN_URL" -u "${CPI_CLIENT_ID}:${CPI_CLIENT_SECRET}" \
@@ -91,7 +69,6 @@ TOKEN=$(curl -sS -f -X POST "$TOKEN_URL" -u "${CPI_CLIENT_ID}:${CPI_CLIENT_SECRE
 [[ -n "$TOKEN" && "$TOKEN" != "null" ]] || { echo "::error::Could not obtain OAuth token"; exit 1; }
 AUTH=(-H "Authorization: Bearer $TOKEN" -H "Accept: application/json")
 
-# --- 3. preflight: credential aliases --------------------------------------
 if [[ -n "$REQUIRED_ALIASES" ]]; then
   IFS=',' read -ra ALIASES <<< "$REQUIRED_ALIASES"
   for RAW in "${ALIASES[@]}"; do
@@ -105,7 +82,6 @@ if [[ -n "$REQUIRED_ALIASES" ]]; then
   done
 fi
 
-# --- 4. ensure package exists ----------------------------------------------
 CODE=$(req GET "$API/IntegrationPackages('${TARGET_PACKAGE}')")
 if [[ "$CODE" == "404" ]]; then
   echo "==> Creating package $TARGET_PACKAGE"
@@ -118,7 +94,6 @@ elif [[ "$CODE" != "200" ]]; then
   fail "Unexpected HTTP $CODE checking package $TARGET_PACKAGE"
 fi
 
-# --- 5. upsert design-time artifact ----------------------------------------
 CONTENT_B64=$(base64 -w0 "$FILE")
 BODY="$(mktemp)"
 CODE=$(req GET "$API/IntegrationDesigntimeArtifacts(Id='${ARTIFACT_ID}',Version='active')")
@@ -140,7 +115,6 @@ else
 fi
 rm -f "$BODY"
 
-# --- 6. apply externalized parameters ---------------------------------------
 if [[ -f "$PARAMS_FILE" ]]; then
   echo "==> Applying externalized parameters from $PARAMS_FILE"
   while IFS='=' read -r KEY VALUE; do
@@ -155,7 +129,6 @@ if [[ -f "$PARAMS_FILE" ]]; then
   done < "$PARAMS_FILE"
 fi
 
-# --- 7. deploy and wait ------------------------------------------------------
 echo "==> Deploying $ARTIFACT_ID"
 CODE=$(req POST "$API/DeployIntegrationDesigntimeArtifact?Id='${ARTIFACT_ID}'&Version='active'")
 [[ "$CODE" =~ ^2 ]] || fail "Deploy call failed (HTTP $CODE)"
