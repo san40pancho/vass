@@ -1,22 +1,25 @@
 name: "CD · Promote to PRD"
 
-# Deliberately manual: run this only after QUA testing has passed.
-# Not chained to the QUA pipeline — testing takes days, not minutes.
+# Deliberately manual, and ONE artifact at a time.
+# Run this only after that artifact has passed testing in QUA.
 #
-#   Actions → "CD · Promote to PRD" → Run workflow
+#   Actions → "CD · Promote to PRD" → Run workflow → pick the artifact
 #
-# Choose the ref (branch or tag) you tested in QUA. Add a required reviewer
-# to the 'prd' environment for a second pair of eyes before it runs.
+# Add a required reviewer to the 'prd' environment for sign-off before deploy.
 on:
   workflow_dispatch:
     inputs:
+      iflow:
+        description: "Artifact folder to promote (e.g. Test_iFlow_DEV)"
+        required: true
+        default: "Test_iFlow_DEV"
       tested_in_qua:
-        description: "Confirm this version passed QUA testing (type: yes)"
+        description: "Confirm this artifact passed QUA testing (type: yes)"
         required: true
         default: "no"
 
 concurrency:
-  group: deploy-prd
+  group: deploy-prd-${{ inputs.iflow }}
   cancel-in-progress: false
 
 jobs:
@@ -24,13 +27,19 @@ jobs:
     name: "Confirm QUA testing"
     runs-on: ubuntu-latest
     steps:
-      - name: Check confirmation
+      - uses: actions/checkout@v4
+      - name: Check confirmation and artifact
         run: |
           if [[ "${{ inputs.tested_in_qua }}" != "yes" ]]; then
-            echo "::error::Type 'yes' to confirm this version passed QUA testing."
+            echo "::error::Type 'yes' to confirm this artifact passed QUA testing."
             exit 1
           fi
-          echo "Confirmed by @${GITHUB_ACTOR}"
+          if [[ ! -f "${{ inputs.iflow }}/META-INF/MANIFEST.MF" ]]; then
+            echo "::error::'${{ inputs.iflow }}' is not an artifact folder in this repo."
+            echo "Available:"; ls -d */META-INF/.. 2>/dev/null | sed 's#/META-INF/..##'
+            exit 1
+          fi
+          echo "Promoting ${{ inputs.iflow }}, confirmed by @${GITHUB_ACTOR}"
 
   deploy-prd:
     name: "Deploy PRD"
@@ -39,18 +48,18 @@ jobs:
     environment: prd      # add a required reviewer here for sign-off
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy to PRD package
+      - name: Deploy artifact to PRD package
         env:
           CPI_TOKEN_URL: ${{ secrets.CPI_TOKEN_URL }}
           CPI_CLIENT_ID: ${{ secrets.CPI_CLIENT_ID }}
           CPI_CLIENT_SECRET: ${{ secrets.CPI_CLIENT_SECRET }}
           CPI_API_URL: ${{ secrets.CPI_API_URL }}
-        run: bash scripts/deploy.sh prd
+        run: bash scripts/deploy.sh prd "${{ inputs.iflow }}"
       - name: Summary
         if: success()
         run: |
           {
-            echo "## 🏁 PRD deployed"
+            echo "## 🏁 PRD deployed — \`${{ inputs.iflow }}\`"
             echo ""
-            echo "Ref \`${GITHUB_REF_NAME}\` (\`${GITHUB_SHA::7}\`) promoted by @${GITHUB_ACTOR}"
+            echo "Commit \`${GITHUB_SHA::7}\` promoted by @${GITHUB_ACTOR}"
           } >> "$GITHUB_STEP_SUMMARY"
