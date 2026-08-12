@@ -1,11 +1,4 @@
-name: "CD · Promote to PRD"
-
-# Deliberately manual, and ONE artifact at a time.
-# Run this only after that artifact has passed testing in QUA.
-#
-#   Actions → "CD · Promote to PRD" → Run workflow → pick the artifact
-#
-# Add a required reviewer to the 'prd' environment for sign-off before deploy.
+name: "CD Promote to PRD"
 on:
   workflow_dispatch:
     inputs:
@@ -21,7 +14,7 @@ jobs:
   deploy-prd:
     name: "Deploy PRD"
     runs-on: ubuntu-latest
-    environment: prd      # add a required reviewer here for sign-off
+    environment: prd
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +38,7 @@ jobs:
         if: success()
         run: |
           {
-            echo "## 🏁 PRD deployed — \`${{ inputs.iflow }}\`"
+            echo "## PRD deployed — \`${{ inputs.iflow }}\`"
             echo ""
             echo "Commit \`${GITHUB_SHA::7}\` promoted by @${GITHUB_ACTOR}"
           } >> "$GITHUB_STEP_SUMMARY"
