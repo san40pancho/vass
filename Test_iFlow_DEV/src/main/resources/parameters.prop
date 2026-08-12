@@ -1,3 +1,4 @@
 #Wed Aug 12 20:59:20 UTC 2026
 ENV_LABEL=DEV
 TARGET_URL=https\://toto-usa-interfaces-non-prod-ikxl2m07.integrationsuite-cpi034.cfapps.us10-002.hana.ondemand.com/shell/design
+sender=/test/testDEV

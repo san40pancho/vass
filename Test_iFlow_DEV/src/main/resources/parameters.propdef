@@ -1,4 +1,5 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?><parameters><parameter>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><parameters>
+  <parameter>
     <key/>
     <name>ENV_LABEL</name>
     <type>xsd:string</type>
@@ -6,7 +7,8 @@
     <constraint/>
     <description/>
     <additionalMetadata/>
-  </parameter><parameter>
+  </parameter>
+  <parameter>
     <key/>
     <name>TARGET_URL</name>
     <type>xsd:string</type>
@@ -14,4 +16,17 @@
     <constraint/>
     <description/>
     <additionalMetadata/>
-  </parameter><param_references/></parameters>
+  </parameter>
+  <parameter>
+    <key/>
+    <name>sender</name>
+    <type>xsd:string</type>
+    <isRequired>false</isRequired>
+    <constraint/>
+    <description/>
+    <additionalMetadata/>
+  </parameter>
+  <param_references>
+    <reference attribute_category="Sender" attribute_id="/attrId::urlPath" attribute_uilabel="" param_key="sender"/>
+  </param_references>
+</parameters>
