@@ -1,0 +1,42 @@
+name: "CD · Deploy to QUA"
+
+# Runs automatically when approved content lands on main.
+# QUA is where testing happens — this is the continuous part of the pipeline.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Test_iFlow_DEV/**"   # the folder CPI's Git Push creates (= SOURCE_DIR)
+      - "config/**"
+      - "scripts/**"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-qua
+  cancel-in-progress: false
+
+jobs:
+  deploy-qua:
+    name: "Deploy QUA"
+    runs-on: ubuntu-latest
+    environment: qua
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to QUA package
+        env:
+          CPI_TOKEN_URL: ${{ secrets.CPI_TOKEN_URL }}
+          CPI_CLIENT_ID: ${{ secrets.CPI_CLIENT_ID }}
+          CPI_CLIENT_SECRET: ${{ secrets.CPI_CLIENT_SECRET }}
+          CPI_API_URL: ${{ secrets.CPI_API_URL }}
+        run: bash scripts/deploy.sh qua
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "## 🚀 QUA deployed"
+            echo ""
+            echo "Commit \`${GITHUB_SHA::7}\` by @${GITHUB_ACTOR}"
+            echo ""
+            echo "Test it in QUA. When testing is done, run the **Promote to PRD**"
+            echo "workflow to ship this version to production."
+          } >> "$GITHUB_STEP_SUMMARY"
