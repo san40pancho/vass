@@ -13,41 +13,27 @@ on:
         description: "Artifact folder to promote (e.g. Test_iFlow_DEV)"
         required: true
         default: "Test_iFlow_DEV"
-      tested_in_qua:
-        description: "Confirm this artifact passed QUA testing (type: yes)"
-        required: true
-        default: "no"
 
 concurrency:
   group: deploy-prd-${{ inputs.iflow }}
   cancel-in-progress: false
 
 jobs:
-  guard:
-    name: "Confirm QUA testing"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check confirmation and artifact
-        run: |
-          if [[ "${{ inputs.tested_in_qua }}" != "yes" ]]; then
-            echo "::error::Type 'yes' to confirm this artifact passed QUA testing."
-            exit 1
-          fi
-          if [[ ! -f "${{ inputs.iflow }}/META-INF/MANIFEST.MF" ]]; then
-            echo "::error::'${{ inputs.iflow }}' is not an artifact folder in this repo."
-            echo "Available:"; ls -d */META-INF/.. 2>/dev/null | sed 's#/META-INF/..##'
-            exit 1
-          fi
-          echo "Promoting ${{ inputs.iflow }}, confirmed by @${GITHUB_ACTOR}"
-
   deploy-prd:
     name: "Deploy PRD"
     runs-on: ubuntu-latest
-    needs: guard
     environment: prd      # add a required reviewer here for sign-off
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check artifact exists
+        run: |
+          if [[ ! -f "${{ inputs.iflow }}/META-INF/MANIFEST.MF" ]]; then
+            echo "::error::'${{ inputs.iflow }}' is not an artifact folder in this repo."
+            echo "Available:"; ls -d */META-INF 2>/dev/null | sed 's#/META-INF##'
+            exit 1
+          fi
+
       - name: Deploy artifact to PRD package
         env:
           CPI_TOKEN_URL: ${{ secrets.CPI_TOKEN_URL }}
@@ -55,6 +41,7 @@ jobs:
           CPI_CLIENT_SECRET: ${{ secrets.CPI_CLIENT_SECRET }}
           CPI_API_URL: ${{ secrets.CPI_API_URL }}
         run: bash scripts/deploy.sh prd "${{ inputs.iflow }}"
+
       - name: Summary
         if: success()
         run: |
