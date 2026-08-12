@@ -2,4 +2,4 @@
 # Keys must match the externalized parameter names in the iFlow exactly.
 # Names and addresses only — never secrets.
 ENV_LABEL=QUA
-TARGET_URL=https://httpbin.org/post?stage=qua
+TARGET_URL=https://toto-usa-interfaces-non-prod-ikxl2m07.integrationsuite-cpi034.cfapps.us10-002.hana.ondemand.com/shell/design
