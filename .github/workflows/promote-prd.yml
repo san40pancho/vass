@@ -1,0 +1,56 @@
+name: "CD · Promote to PRD"
+
+# Deliberately manual: run this only after QUA testing has passed.
+# Not chained to the QUA pipeline — testing takes days, not minutes.
+#
+#   Actions → "CD · Promote to PRD" → Run workflow
+#
+# Choose the ref (branch or tag) you tested in QUA. Add a required reviewer
+# to the 'prd' environment for a second pair of eyes before it runs.
+on:
+  workflow_dispatch:
+    inputs:
+      tested_in_qua:
+        description: "Confirm this version passed QUA testing (type: yes)"
+        required: true
+        default: "no"
+
+concurrency:
+  group: deploy-prd
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: "Confirm QUA testing"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation
+        run: |
+          if [[ "${{ inputs.tested_in_qua }}" != "yes" ]]; then
+            echo "::error::Type 'yes' to confirm this version passed QUA testing."
+            exit 1
+          fi
+          echo "Confirmed by @${GITHUB_ACTOR}"
+
+  deploy-prd:
+    name: "Deploy PRD"
+    runs-on: ubuntu-latest
+    needs: guard
+    environment: prd      # add a required reviewer here for sign-off
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to PRD package
+        env:
+          CPI_TOKEN_URL: ${{ secrets.CPI_TOKEN_URL }}
+          CPI_CLIENT_ID: ${{ secrets.CPI_CLIENT_ID }}
+          CPI_CLIENT_SECRET: ${{ secrets.CPI_CLIENT_SECRET }}
+          CPI_API_URL: ${{ secrets.CPI_API_URL }}
+        run: bash scripts/deploy.sh prd
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "## 🏁 PRD deployed"
+            echo ""
+            echo "Ref \`${GITHUB_REF_NAME}\` (\`${GITHUB_SHA::7}\`) promoted by @${GITHUB_ACTOR}"
+          } >> "$GITHUB_STEP_SUMMARY"
