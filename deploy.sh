@@ -1,0 +1,6 @@
+# Externalized parameter values applied to Test_iFlow_QUA before deployment.
+# Keys must match the externalized parameter names in the iFlow exactly.
+# Names and addresses only — never secrets.
+ENV_LABEL=QUA
+TARGET_URL=https://httpbin.org/post?stage=qua
+ENABLE_DEBUG=true
