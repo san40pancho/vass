@@ -1,15 +1,12 @@
 name: "CD · Promote to PRD"
 
-# Promotion to production happens by MERGING a pull request into the 'prd'
-# branch — that PR is where a colleague reviews and approves.
+# Deliberately manual, and ONE artifact at a time.
+# Run this only after that artifact has passed testing in QUA.
 #
-#   main (tested in QUA) ──PR──► review + approve ──merge──► prd ──► deployed
+#   Actions → "CD · Promote to PRD" → Run workflow → pick the artifact
 #
-# Only the artifacts changed by that merge are deployed, so iFlows are
-# promoted individually. You can also run it manually for one artifact.
+# Add a required reviewer to the 'prd' environment for sign-off before deploy.
 on:
-  push:
-    branches: [prd]
   workflow_dispatch:
     inputs:
       iflow:
@@ -17,65 +14,38 @@ on:
         required: true
 
 concurrency:
-  group: deploy-prd
+  group: deploy-prd-${{ inputs.iflow }}
   cancel-in-progress: false
 
 jobs:
   deploy-prd:
     name: "Deploy PRD"
     runs-on: ubuntu-latest
-    environment: prd
+    environment: prd      # add a required reviewer here for sign-off
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0    # need history to see what this merge changed
 
-      - name: Decide which artifacts to promote
-        id: pick
+      - name: Check artifact exists
         run: |
-          set -euo pipefail
-          if [[ -n "${{ inputs.iflow }}" ]]; then
-            LIST="${{ inputs.iflow }}"
-            echo "Manual run → $LIST"
-          else
-            # artifact folders touched by this push
-            BEFORE="${{ github.event.before }}"
-            if [[ -z "$BEFORE" || "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
-              CHANGED=""
-            else
-              CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}" || true)
-            fi
-            LIST=$(echo "$CHANGED" | awk -F/ 'NF>1{print $1}' | sort -u \
-                   | while read -r d; do [[ -f "$d/META-INF/MANIFEST.MF" ]] && echo "$d"; done)
-            if [[ -z "$LIST" ]]; then
-              echo "No artifact folders changed by this merge — promoting all artifacts in the repo."
-              LIST=$(ls -d */META-INF 2>/dev/null | sed 's#/META-INF##')
-            fi
+          if [[ ! -f "${{ inputs.iflow }}/META-INF/MANIFEST.MF" ]]; then
+            echo "::error::'${{ inputs.iflow }}' is not an artifact folder in this repo."
+            echo "Available:"; ls -d */META-INF 2>/dev/null | sed 's#/META-INF##'
+            exit 1
           fi
-          [[ -n "$LIST" ]] || { echo "::error::No artifacts found to promote"; exit 1; }
-          echo "Promoting:"; echo "$LIST" | sed 's/^/  - /'
-          { echo "list<<EOF"; echo "$LIST"; echo "EOF"; } >> "$GITHUB_OUTPUT"
 
-      - name: Deploy to PRD package
+      - name: Deploy artifact to PRD package
         env:
           CPI_TOKEN_URL: ${{ secrets.CPI_TOKEN_URL }}
           CPI_CLIENT_ID: ${{ secrets.CPI_CLIENT_ID }}
           CPI_CLIENT_SECRET: ${{ secrets.CPI_CLIENT_SECRET }}
           CPI_API_URL: ${{ secrets.CPI_API_URL }}
-        run: |
-          while read -r d; do
-            [[ -n "$d" ]] || continue
-            bash scripts/deploy.sh prd "$d"
-          done <<< "${{ steps.pick.outputs.list }}"
+        run: bash scripts/deploy.sh prd "${{ inputs.iflow }}"
 
       - name: Summary
         if: success()
         run: |
           {
-            echo "## 🏁 PRD deployed"
+            echo "## 🏁 PRD deployed — \`${{ inputs.iflow }}\`"
             echo ""
-            echo "Promoted by @${GITHUB_ACTOR} from \`${GITHUB_SHA::7}\`:"
-            echo '```'
-            echo "${{ steps.pick.outputs.list }}"
-            echo '```'
+            echo "Commit \`${GITHUB_SHA::7}\` promoted by @${GITHUB_ACTOR}"
           } >> "$GITHUB_STEP_SUMMARY"
