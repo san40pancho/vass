@@ -1,12 +1,9 @@
-name: "CD · Deploy to QUA"
-
-# Runs automatically when approved content lands on main.
-# QUA is where testing happens — this is the continuous part of the pipeline.
+name: "CD Deploy to QUA"
 on:
   push:
     branches: [main]
     paths:
-      - "Test_iFlow_DEV/**"   # the folder CPI's Git Push creates (= SOURCE_DIR)
+      - "Test_iFlow_DEV/**"  
       - "config/**"
       - "scripts/**"
   workflow_dispatch: {}
@@ -33,10 +30,7 @@ jobs:
         if: success()
         run: |
           {
-            echo "## 🚀 QUA deployed"
+            echo "## QUA deployed"
             echo ""
             echo "Commit \`${GITHUB_SHA::7}\` by @${GITHUB_ACTOR}"
-            echo ""
-            echo "Test it in QUA. When testing is done, run the **Promote to PRD**"
-            echo "workflow to ship this version to production."
           } >> "$GITHUB_STEP_SUMMARY"
