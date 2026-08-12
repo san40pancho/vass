@@ -10,7 +10,11 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-ENV_NAME="${1:?usage: deploy.sh <qua|prd>}"
+#   usage: scripts/deploy.sh qua [Test_iFlow_DEV]
+# Second argument (or the IFLOW_DIR env var) picks ONE artifact folder to
+# deploy. Without it, SOURCE_DIR from config/base.env is used.
+ENV_NAME="${1:?usage: deploy.sh <qua|prd> [artifact-folder]}"
+IFLOW_DIR="${2:-${IFLOW_DIR:-}}"
 : "${CPI_TOKEN_URL:?missing}" "${CPI_CLIENT_ID:?missing}" "${CPI_CLIENT_SECRET:?missing}" "${CPI_API_URL:?missing}"
 
 # --- config ----------------------------------------------------------------
@@ -19,15 +23,27 @@ for f in "config/base.env" "config/${ENV_NAME}.env"; do
   # shellcheck disable=SC1090
   source "$f"
 done
-: "${SOURCE_DIR:?not set in base.env}" "${BASE_ID:?not set in base.env}" "${IFLOW_NAME:?not set in base.env}"
+# Which artifact folder are we promoting? Explicit argument wins.
+[[ -n "$IFLOW_DIR" ]] && SOURCE_DIR="$IFLOW_DIR"
+: "${SOURCE_DIR:?no artifact folder given (arg 2) and SOURCE_DIR not set in base.env}"
+SOURCE_DIR="${SOURCE_DIR%/}"
+
+# Base ID = folder name without the _DEV suffix, unless base.env overrides it
+# for the single-artifact case.
+if [[ -n "$IFLOW_DIR" || -z "${BASE_ID:-}" ]]; then
+  BASE_ID="${SOURCE_DIR%_DEV}"
+fi
 : "${IFLOW_SUFFIX:?not set in ${ENV_NAME}.env}" "${TARGET_PACKAGE:?not set in ${ENV_NAME}.env}"
 TARGET_PACKAGE_NAME="${TARGET_PACKAGE_NAME:-$TARGET_PACKAGE}"
 REQUIRED_ALIASES="${REQUIRED_ALIASES:-}"
 
 ARTIFACT_ID="${BASE_ID}${IFLOW_SUFFIX}"
 ARTIFACT_NAME="${BASE_ID}${IFLOW_SUFFIX}"
-PARAMS_FILE="config/${ENV_NAME}.params"
 API="${CPI_API_URL%/}"
+
+# Per-artifact params file if present, otherwise the shared one.
+PARAMS_FILE="config/${BASE_ID}.${ENV_NAME}.params"
+[[ -f "$PARAMS_FILE" ]] || PARAMS_FILE="config/${ENV_NAME}.params"
 
 # --- helper: call the API, keep body + status, show body on error -----------
 RESP_BODY=""
