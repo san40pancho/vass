@@ -1,4 +1,4 @@
 # Externalized parameter values applied to Test_iFlow_PRD before deployment.
 ENV_LABEL=PRD
 TARGET_URL=https://toto-usa-interfaces-prod-ikxl2m07.integrationsuite-cpi034.cfapps.us10-002.hana.ondemand.com/shell/design
-sender=/test/testDEV
+sender=/test/testPRD
